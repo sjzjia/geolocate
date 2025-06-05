@@ -1,5 +1,10 @@
 # 使用官方的 Python 基础镜像
 FROM python:3.9-slim-buster
+# 系统更新
+apt updatet -y
+
+# 安装wget下载工具
+apt install -y wget
 
 # 设置工作目录
 WORKDIR /app
@@ -12,11 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY templates/ templates/
 
-# 拷贝 GeoLite2-Country.mmdb 文件
-# 直接拷贝到容器内，如果文件非常大，可以考虑通过 Docker Volume 挂载
-COPY GeoLite2-Country.mmdb .
-COPY GeoLite2-ASN.mmdb .
-COPY GeoLite2-City.mmdb .
+# 下载GeoLite2文件
+wget -P /app https://git.io/GeoLite2-Country.mmdb
+wget -P /app https://git.io/GeoLite2-ASN.mmdb
+wget -P /app https://git.io/GeoLite2-City.mmdb
 
 # 暴露 Flask 默认端口
 EXPOSE 80
