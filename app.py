@@ -1,125 +1,511 @@
-from flask import Flask, request, jsonify, render_template
-import maxminddb
-import os
-import socket
-import ipaddress
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoLocate - IP/域名地理位置查询</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --primary-hover: #4338CA;
+      --secondary: #F9FAFB;
+      --background: #F1F5F9;
+      --text: #1E293B;
+      --text-muted: #64748B;
+      --card-bg: #FFFFFF;
+      --border: #E2E8F0;
+      --radius: 12px;
+      --shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+    }
 
-app = Flask(__name__)
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-# GeoLite2-City.mmdb 和 GeoLite2-ASN.mmdb 文件路径
-CITY_DB_PATH = 'GeoLite2-City.mmdb'
-ASN_DB_PATH = 'GeoLite2-ASN.mmdb'
+    body {
+      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+      background: var(--background);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
 
-# 检查数据库文件是否存在
-if not os.path.exists(CITY_DB_PATH):
-    print(f"错误：'{CITY_DB_PATH}' 文件未找到。请确保它在正确的路径下。")
-    print("你可以从 MaxMind 网站下载 GeoLite2-City.mmdb 文件。")
-    exit()
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      width: 100%;
+      max-width: 860px;
+      border: 1px solid var(--border);
+      transition: transform 0.3s;
+    }
 
-if not os.path.exists(ASN_DB_PATH):
-    print(f"错误：'{ASN_DB_PATH}' 文件未找到。请确保它在正确的路径下。")
-    print("你可以从 MaxMind 网站下载 GeoLite2-ASN.mmdb 文件。")
-    exit()
+    .card:hover {
+      transform: translateY(-3px);
+    }
 
-try:
-    city_reader = maxminddb.open_database(CITY_DB_PATH)
-except maxminddb.InvalidDatabaseError:
-    print(f"错误：'{CITY_DB_PATH}' 不是一个有效的 MaxMind DB 数据库文件。")
-    exit()
-except Exception as e:
-    print(f"打开 City 数据库时发生错误：{e}")
-    exit()
+    .card-header {
+      background: linear-gradient(135deg, var(--primary), #6366F1);
+      color: #fff;
+      padding: 2rem;
+      text-align: center;
+    }
 
-try:
-    asn_reader = maxminddb.open_database(ASN_DB_PATH)
-except maxminddb.InvalidDatabaseError:
-    print(f"错误：'{ASN_DB_PATH}' 不是一个有效的 MaxMind DB 数据库文件。")
-    exit()
-except Exception as e:
-    print(f"打开 ASN 数据库时发生错误：{e}")
-    exit()
+    .card-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+    .card-subtitle, .card-subtitle-secondary {
+      font-size: 0.95rem;
+      opacity: 0.9;
+      margin-top: 0.3rem;
+      line-height: 1.6;
+    }
 
-@app.route('/lookup_detailed', methods=['GET', 'POST'])
-def lookup_detailed():
-    query_input = None
-    if request.method == 'POST':
-        json_data = request.get_json(silent=True)
-        if json_data:
-            query_input = json_data.get('query')
-    elif request.method == 'GET':
-        query_input = request.args.get('query')
+    .card-body {
+      padding: 2rem;
+    }
 
-    # 没有输入时，尝试取客户端 IP
-    if not query_input:
-        if 'X-Forwarded-For' in request.headers:
-            ip_address_to_lookup = request.headers['X-Forwarded-For'].split(',')[0].strip()
-        else:
-            ip_address_to_lookup = request.remote_addr
-    else:
-        ip_address_to_lookup = query_input
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
 
-    if not ip_address_to_lookup:
-        return jsonify({"error": "No IP address or domain provided."}), 400
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
 
-    original_query = ip_address_to_lookup
+    .form-control {
+      width: 100%;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 1rem;
+      background: var(--secondary);
+      transition: border 0.2s ease;
+    }
 
-    # 如果不是有效 IP，尝试域名解析
-    if not is_valid_ip(ip_address_to_lookup):
-        try:
-            ip_address_to_lookup = socket.gethostbyname(ip_address_to_lookup)
-        except socket.gaierror:
-            return jsonify({"error": f"Invalid domain or IP address: '{original_query}'"}), 400
-        except Exception as e:
-            return jsonify({"error": f"Failed to resolve domain '{original_query}': {str(e)}"}), 500
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: #fff;
+    }
 
-    try:
-        city_response = city_reader.get(ip_address_to_lookup)
-        asn_response = asn_reader.get(ip_address_to_lookup)
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      width: 100%;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
 
-        country_name_en = city_response.get('country', {}).get('names', {}).get('en', 'Not Found') if city_response else 'Not Found'
-        iso_code = city_response.get('country', {}).get('iso_code', 'N/A') if city_response else 'N/A'
-        city_name_en = city_response.get('city', {}).get('names', {}).get('en', 'N/A') if city_response else 'N/A'
-        subdivisions = city_response.get('subdivisions', []) if city_response else []
-        subdivision_name_en = subdivisions[0].get('names', {}).get('en', 'N/A') if subdivisions else 'N/A'
-        postal_code = city_response.get('postal', {}).get('code', 'N/A') if city_response else 'N/A'
-        latitude = city_response.get('location', {}).get('latitude', 'N/A') if city_response else 'N/A'
-        longitude = city_response.get('location', {}).get('longitude', 'N/A') if city_response else 'N/A'
+    .btn:hover {
+      background: var(--primary-hover);
+    }
 
-        asn = asn_response.get('autonomous_system_number', 'N/A') if asn_response else 'N/A'
-        asn_organization = asn_response.get('autonomous_system_organization', 'N/A') if asn_response else 'N/A'
+    .hint-text {
+      margin-top: 1rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
 
-        return jsonify({
-            "query_input": original_query,
-            "resolved_ip": ip_address_to_lookup,
-            "country_name": country_name_en,
-            "iso_code": iso_code,
-            "city_name": city_name_en,
-            "subdivision_name": subdivision_name_en,
-            "postal_code": postal_code,
-            "latitude": latitude,
-            "longitude": longitude,
-            "asn": asn,
-            "asn_organization": asn_organization
-        })
+    .result-container {
+      margin-top: 2rem;
+      background: var(--secondary);
+      padding: 2rem;
+      border-radius: var(--radius);
+    }
 
-    except Exception as e:
-        return jsonify({"error": f"An error occurred during lookup: {str(e)}"}), 500
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
 
-def is_valid_ip(ip_str):
-    """
-    使用 ipaddress 模块判断是否是合法 IPv4 或 IPv6 地址。
-    """
-    try:
-        ipaddress.ip_address(ip_str)
-        return True
-    except ValueError:
-        return False
+    .result-item {
+      padding-bottom: 1rem;
+      border-bottom: 1px dashed var(--border);
+    }
 
-if __name__ == '__main__':
-    if not os.path.exists('templates'):
-        os.makedirs('templates')
-    app.run(debug=True, host='0.0.0.0', port=80)
+    .result-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 0.3rem;
+    }
+
+    .result-value {
+      font-weight: 600;
+    }
+
+    .map-links {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .map-link {
+      padding: 0.6rem 1rem;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .map-link.google {
+      background: rgba(66, 133, 244, 0.1);
+      color: #4285F4;
+      border: 1px solid #AECBFA;
+    }
+
+    .map-link.baidu {
+      background: rgba(41, 50, 225, 0.1);
+      color: #2932E1;
+      border: 1px solid #AAB4F3;
+    }
+    
+    .map-link.apple {
+      background: rgba(0, 122, 255, 0.1);
+      color: #007AFF;
+      border: 1px solid #A3C0FF;
+    }
+
+
+    .loading, .error-message {
+      text-align: center;
+      color: var(--primary);
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #CBD5E1;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 手机适配 */
+    @media (max-width: 900px) {
+      .card {
+        max-width: 100%;
+        margin: 0 1rem;
+      }
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 1rem;
+      }
+      .card-header, .card-body {
+        padding: 1.25rem 1rem;
+      }
+      .card-title {
+        font-size: 1.5rem;
+      }
+      .card-subtitle, .card-subtitle-secondary {
+        font-size: 0.9rem;
+      }
+      .form-control {
+        padding: 0.85rem 0.75rem;
+        font-size: 1.1rem;
+      }
+      .btn {
+        padding: 1.25rem;
+        font-size: 1.1rem;
+        border-radius: 10px;
+      }
+      .result-grid {
+        grid-template-columns: 1fr !important;
+      }
+      .result-item {
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .map-links {
+        justify-content: center;
+      }
+      .map-link {
+        flex: 1 1 100%;
+        text-align: center;
+        padding: 0.8rem 0;
+        font-size: 1rem;
+      }
+    }
+
+    /* 触摸优化 */
+    .form-control, .btn {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+  </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header">
+            <h1 class="card-title">GeoLocate</h1>
+            <p class="card-subtitle">IP地址查询，域名归属地查询，网站IP地址定位</p>
+            <p class="card-subtitle-secondary">精准查询任意IP地址和域名的地理位置信息，包括国家、省份、城市、运营商等。免费提供快速、准确的IP归属地查询服务。</p>
+        </div>
+        
+        <div class="card-body">
+            <div class="form-group">
+                <label for="queryInput" class="form-label">输入 IP 地址或域名</label>
+                <input type="text" id="queryInput" class="form-control" placeholder="例如: 8.8.8.8 或 google.com">
+            </div>
+            
+            <button class="btn" onclick="lookupQuery()">
+                <i class="fas fa-search"></i>
+                查询地理位置
+            </button>
+            
+            <p class="hint-text">留空查询您当前的 IP 地址信息</p>
+            
+            <div class="result-container" id="result">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>正在获取地理位置数据...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+  // 多语言文本字典
+  const i18n = {
+    zh: {
+      title: "GeoLocate",
+      subtitle: "IP地址查询，域名归属地查询，网站IP地址定位",
+      subtitleSecondary: "精准查询任意IP地址和域名的地理位置信息，包括国家、省份、城市、运营商等。免费提供快速、准确的IP归属地查询服务。",
+      inputLabel: "输入 IP 地址或域名",
+      inputPlaceholder: "例如: 8.8.8.8 或 google.com",
+      btnLookup: "查询地理位置",
+      hintText: "留空查询您当前的 IP 地址信息",
+      loading: "正在查询中，请稍候...",
+      loadingInitial: "正在获取地理位置数据...",
+      errorNetwork: "无法连接到服务器",
+      errorUnknown: "未知错误，请稍后再试",
+      queryFailed: "查询失败",
+      networkError: "网络错误",
+      invalidInput: "请输入有效的IP地址或域名"
+    },
+    en: {
+      title: "GeoLocate",
+      subtitle: "IP and Domain Geolocation Lookup",
+      subtitleSecondary: "Accurately query geolocation information of any IP address or domain, including country, region, city, ISP, and more. Free and fast service.",
+      inputLabel: "Enter IP address or domain",
+      inputPlaceholder: "e.g., 8.8.8.8 or google.com",
+      btnLookup: "Lookup Location",
+      hintText: "Leave blank to query your current IP address",
+      loading: "Loading, please wait...",
+      loadingInitial: "Fetching geolocation data...",
+      errorNetwork: "Cannot connect to server",
+      errorUnknown: "Unknown error, please try later",
+      queryFailed: "Lookup failed",
+      networkError: "Network error",
+      invalidInput: "Please enter a valid IP address or domain"
+    }
+  };
+
+  // 当前语言，默认中文
+  let currentLang = 'en';
+
+  // 根据浏览器语言检测
+  function detectBrowserLanguage() {
+    const lang = navigator.language || navigator.userLanguage || 'zh';
+    if (lang.startsWith('en')) return 'en';
+    if (lang.startsWith('zh')) return 'zh';
+    return 'en'; // 默认中文
+  }
+
+  // 页面元素多语言替换
+  function applyLanguage(lang) {
+    currentLang = lang;
+    const texts = i18n[lang];
+    document.querySelector('.card-title').textContent = texts.title;
+    document.querySelector('.card-subtitle').textContent = texts.subtitle;
+    document.querySelector('.card-subtitle-secondary').textContent = texts.subtitleSecondary;
+    document.querySelector('label[for="queryInput"]').textContent = texts.inputLabel;
+    const inputEl = document.getElementById('queryInput');
+    inputEl.placeholder = texts.inputPlaceholder;
+    document.querySelector('.btn').innerHTML = `<i class="fas fa-search"></i> ${texts.btnLookup}`;
+    document.querySelector('.hint-text').textContent = texts.hintText;
+  }
+
+  // 简单IP和域名格式校验
+function isValidInput(input) {
+  if (!input) return true; // 允许空，表示查询当前IP
+
+  const ipV4Regex = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
+
+  const ipV6FullRegex = /^(([0-9A-Fa-f]{1,4}:){1,7}:|:((:[0-9A-Fa-f]{1,4}){1,7})|(([0-9A-Fa-f]{1,4}:){1,6}(:[0-9A-Fa-f]{1,4}){1,1})|(([0-9A-Fa-f]{1,4}:){1,5}(:[0-9A-Fa-f]{1,4}){1,2})|(([0-9A-Fa-f]{1,4}:){1,4}(:[0-9A-Fa-f]{1,4}){1,3})|(([0-9A-Fa-f]{1,4}:){1,3}(:[0-9A-Fa-f]{1,4}){1,4})|(([0-9A-Fa-f]{1,4}:){1,2}(:[0-9A-Fa-f]{1,4}){1,5})|(([0-9A-Fa-f]{1,4}:){1}(:[0-9A-Fa-f]{1,4}){1,6})|(:((:[0-9A-Fa-f]{1,4}){1,7}|:)))(%.+)?$/;
+
+  const domainRegex = /^(?=.{1,253}$)(?!-)([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$/;
+
+  return ipV4Regex.test(input) || ipV6FullRegex.test(input) || domainRegex.test(input);
+}
+
+  async function lookupQuery() {
+    const queryInput = document.getElementById('queryInput');
+    const resultDiv = document.getElementById('result');
+    const queryValue = queryInput.value.trim();
+
+    if (!isValidInput(queryValue)) {
+      resultDiv.innerHTML = `
+        <div class="error-message">
+          <i class="fas fa-exclamation-triangle error-icon"></i>
+          <h3>${i18n[currentLang].invalidInput}</h3>
+        </div>`;
+      return;
+    }
+
+    resultDiv.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>${i18n[currentLang].loading}</p>
+      </div>
+    `;
+
+    try {
+      const url = queryValue ? `/lookup_detailed?query=${encodeURIComponent(queryValue)}` : '/lookup_detailed';
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (response.ok) {
+        const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${data.latitude},${data.longitude}`;
+        const baiduMapUrl = `https://api.map.baidu.com/marker?location=${data.latitude},${data.longitude}&output=html&src=GeoLocatePro`;
+        const appleMapUrl = `https://maps.apple.com/?q=${data.latitude},${data.longitude}`;
+
+        let asnDisplay = 'N/A';
+        if (data.asn !== 'N/A' && data.asn_organization !== 'N/A') {
+          asnDisplay = `AS${data.asn} - ${data.asn_organization}`;
+        } else if (data.asn !== 'N/A') {
+          asnDisplay = `AS${data.asn}`;
+        } else if (data.asn_organization !== 'N/A') {
+          asnDisplay = data.asn_organization;
+        }
+
+        resultDiv.innerHTML = `
+          <div class="result-grid">
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-search"></i>${i18n[currentLang].inputLabel}</span>
+              <span class="result-value">${data.query_input || (currentLang === 'zh' ? '您的IP' : 'Your IP')}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-network-wired"></i>IP</span>
+              <span class="result-value">${data.resolved_ip}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-globe-americas"></i>${currentLang === 'zh' ? '国家' : 'Country'}</span>
+              <span class="result-value">${data.country_name} (${data.iso_code})</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-map-marked-alt"></i>${currentLang === 'zh' ? '州/省' : 'Region'}</span>
+              <span class="result-value">${data.subdivision_name || 'N/A'}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-city"></i>${currentLang === 'zh' ? '城市' : 'City'}</span>
+              <span class="result-value">${data.city_name || 'N/A'}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-mail-bulk"></i>${currentLang === 'zh' ? '邮政编码' : 'Postal Code'}</span>
+              <span class="result-value">${data.postal_code || 'N/A'}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-map-pin"></i>${currentLang === 'zh' ? '经纬度' : 'Latitude, Longitude'}</span>
+              <span class="result-value">${data.latitude || 'N/A'}, ${data.longitude || 'N/A'}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-sitemap"></i>ASN</span>
+              <span class="result-value">${asnDisplay}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label"><i class="fas fa-building"></i>${currentLang === 'zh' ? '运营商' : 'ISP'}</span>
+              <span class="result-value">${data.asn_organization || 'N/A'}</span>
+            </div>
+            ${data.latitude && data.longitude && data.latitude !== 'N/A' && data.longitude !== 'N/A' ? `
+              <div class="result-item" style="grid-column: 1 / -1;">
+                <span class="result-label"><i class="fas fa-map"></i>${currentLang === 'zh' ? '地图服务' : 'Map Services'}</span>
+                <div class="map-links">
+                  <a href="${googleMapUrl}" target="_blank" class="map-link google">
+                    <i class="fab fa-google"></i>
+                    Google Maps
+                  </a>
+                  <a href="${baiduMapUrl}" target="_blank" class="map-link baidu">
+                    <i class="fas fa-map-marked-alt"></i>
+                    百度地图
+                  </a>
+                  <a href="${appleMapUrl}" target="_blank" class="map-link apple">
+                    <i class="fas fa-map"></i>
+                    苹果地图
+                  </a>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else {
+        resultDiv.innerHTML = `
+          <div class="error-message">
+            <i class="fas fa-exclamation-triangle error-icon"></i>
+            <h3>${i18n[currentLang].queryFailed}</h3>
+            <p>${data.error || i18n[currentLang].errorUnknown}</p>
+          </div>
+        `;
+      }
+    } catch (error) {
+      resultDiv.innerHTML = `
+        <div class="error-message">
+          <i class="fas fa-unlink error-icon"></i>
+          <h3>${i18n[currentLang].networkError}</h3>
+          <p>${i18n[currentLang].errorNetwork}: ${error.message}</p>
+        </div>
+      `;
+      console.error('Error:', error);
+    }
+  }
+
+  // 添加回车键触发查询
+  document.getElementById('queryInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      lookupQuery();
+    }
+  });
+
+  // 页面加载完后自动设置语言并查询当前IP
+  window.addEventListener('DOMContentLoaded', () => {
+    const lang = detectBrowserLanguage();
+    applyLanguage(lang);
+    lookupQuery();
+  });
+
+  // 你以后如果要做语言切换按钮，调用 applyLanguage('zh') 或 applyLanguage('en') 即可
+</script>
+
+</body>
+</html>
