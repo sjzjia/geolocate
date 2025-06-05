@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GeoLocate - IP/域名地理位置查询</title>
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <style>
@@ -183,6 +184,13 @@
       color: #2932E1;
       border: 1px solid #AAB4F3;
     }
+    
+    .map-link.apple {
+      background: rgba(0, 122, 255, 0.1);
+      color: #007AFF;
+      border: 1px solid #A3C0FF;
+    }
+
 
     .loading, .error-message {
       text-align: center;
@@ -392,6 +400,7 @@ function isValidInput(input) {
       if (response.ok) {
         const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${data.latitude},${data.longitude}`;
         const baiduMapUrl = `https://api.map.baidu.com/marker?location=${data.latitude},${data.longitude}&output=html&src=GeoLocatePro`;
+        const appleMapUrl = `https://maps.apple.com/?q=${data.latitude},${data.longitude}`;
 
         let asnDisplay = 'N/A';
         if (data.asn !== 'N/A' && data.asn_organization !== 'N/A') {
@@ -451,6 +460,10 @@ function isValidInput(input) {
                   <a href="${baiduMapUrl}" target="_blank" class="map-link baidu">
                     <i class="fas fa-map-marked-alt"></i>
                     百度地图
+                  </a>
+                  <a href="${appleMapUrl}" target="_blank" class="map-link apple">
+                    <i class="fas fa-map"></i>
+                    苹果地图
                   </a>
                 </div>
               </div>
